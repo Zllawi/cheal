@@ -17,6 +17,60 @@ import { supportRouter } from "./modules/support/router.js";
 
 const app = express();
 
+function normalizeOrigin(value: string): string {
+  return value.trim().replace(/\/$/, "");
+}
+
+function isPrivateOrLocalHostname(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return true;
+  }
+
+  const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!ipv4Match) {
+    return false;
+  }
+
+  const octets = ipv4Match.slice(1).map((segment) => Number(segment));
+  if (octets.some((segment) => Number.isNaN(segment) || segment < 0 || segment > 255)) {
+    return false;
+  }
+
+  const [first, second] = octets;
+  if (first === 10 || first === 127) {
+    return true;
+  }
+  if (first === 192 && second === 168) {
+    return true;
+  }
+  if (first === 172 && second >= 16 && second <= 31) {
+    return true;
+  }
+
+  return false;
+}
+
+function isAllowedCorsOrigin(origin: string): boolean {
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (allowedOrigins.includes(normalizedOrigin)) {
+    return true;
+  }
+
+  // In development, allow local/LAN web clients without editing ALLOWED_ORIGIN for every IP change.
+  if (env.NODE_ENV !== "production") {
+    try {
+      const { hostname } = new URL(normalizedOrigin);
+      if (isPrivateOrLocalHostname(hostname)) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 app.disable("x-powered-by");
 app.use(
   helmet({
@@ -31,12 +85,12 @@ app.use(
         return;
       }
 
-      if (allowedOrigins.includes(origin)) {
+      if (isAllowedCorsOrigin(origin)) {
         callback(null, true);
         return;
       }
 
-      callback(new Error(`Origin ${origin} is not allowed by CORS`));
+      callback(new HttpError(403, `Origin ${origin} is not allowed by CORS`));
     },
     credentials: true
   })

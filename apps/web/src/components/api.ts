@@ -38,14 +38,48 @@ function resolveApiBase(): string {
 
   if (typeof window !== "undefined") {
     const hostname = window.location.hostname;
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://localhost:4000";
+    if (isLocalOrPrivateHost(hostname)) {
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
+        return "http://localhost:4000";
+      }
+      return `http://${hostname}:4000`;
     }
 
-    console.error("NEXT_PUBLIC_API_BASE_URL is not configured for this deployment.");
+    console.error(
+      `NEXT_PUBLIC_API_BASE_URL is not configured for this deployment (hostname: ${hostname}).`
+    );
   }
 
   return "";
+}
+
+function isLocalOrPrivateHost(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
+    return true;
+  }
+
+  const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!ipv4Match) {
+    return false;
+  }
+
+  const octets = ipv4Match.slice(1).map((value) => Number(value));
+  if (octets.some((value) => Number.isNaN(value) || value < 0 || value > 255)) {
+    return false;
+  }
+
+  const [first, second] = octets;
+  if (first === 10 || first === 127) {
+    return true;
+  }
+  if (first === 192 && second === 168) {
+    return true;
+  }
+  if (first === 172 && second >= 16 && second <= 31) {
+    return true;
+  }
+
+  return false;
 }
 
 export async function devLogin(role: "user" | "station_manager" | "admin" = "user") {

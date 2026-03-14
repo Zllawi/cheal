@@ -23,6 +23,7 @@ for (const candidate of envCandidates) {
 }
 
 const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_PORT: z.coerce.number().default(4000),
   API_HOST: z.string().default("0.0.0.0"),
   MONGODB_URI: z.string().min(1),
@@ -39,4 +40,5 @@ export const env = envSchema.parse(process.env);
 
 export const allowedOrigins = env.ALLOWED_ORIGIN.split(",")
   .map((value) => value.trim())
+  .map((value) => value.replace(/\/$/, ""))
   .filter((value) => value.length > 0);
