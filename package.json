@@ -1,0 +1,23 @@
+{
+  "name": "fuelmap-libya",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:ai\"",
+    "dev:web": "npm run dev -w @fuelmap/web",
+    "dev:api": "npm run dev -w @fuelmap/api",
+    "dev:ai": "npm run dev -w @fuelmap/ai",
+    "build": "npm run build -w @fuelmap/api && npm run build -w @fuelmap/web",
+    "lint": "npm run lint -w @fuelmap/api && npm run lint -w @fuelmap/web",
+    "typecheck": "npm run typecheck -w @fuelmap/api && npm run typecheck -w @fuelmap/web",
+    "db:migrate": "npm run db:migrate -w @fuelmap/api",
+    "db:seed": "npm run db:seed -w @fuelmap/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -1,0 +1,29 @@
+@import "leaflet/dist/leaflet.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-0: #f4f8f7;
+  --bg-1: #eaf3f1;
+  --ink: #11231d;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at top right, #d9ebe6 0%, var(--bg-0) 40%, var(--bg-1) 100%);
+  color: var(--ink);
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@fuelmap/ai",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "start": "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000",
+    "build": "node -e \"console.log('AI service build is runtime-only')\"",
+    "lint": "node -e \"console.log('No AI lint configured yet')\"",
+    "typecheck": "node -e \"console.log('Python typecheck is optional (mypy)')\""
+  }
+}
