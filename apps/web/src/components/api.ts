@@ -11,7 +11,7 @@
   SupportThread
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const API_BASE = resolveApiBase();
 const OVERPASS_ENDPOINTS = (
   process.env.NEXT_PUBLIC_OVERPASS_ENDPOINTS ??
   "https://overpass-api.de/api/interpreter,https://lz4.overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter"
@@ -29,6 +29,24 @@ const OVERPASS_MAX_ENDPOINT_TRIES = 1;
 const overpassCache = new Map<string, { expiresAt: number; stations: OSMFuelStation[] }>();
 const overpassGasCache = new Map<string, { expiresAt: number; items: OSMGasLocation[] }>();
 let overpassCooldownUntil = 0;
+
+function resolveApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return "http://localhost:4000";
+    }
+
+    console.error("NEXT_PUBLIC_API_BASE_URL is not configured for this deployment.");
+  }
+
+  return "";
+}
 
 export async function devLogin(role: "user" | "station_manager" | "admin" = "user") {
   const response = await fetch(`${API_BASE}/auth/dev-login`, {

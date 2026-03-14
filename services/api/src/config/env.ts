@@ -36,3 +36,7 @@ const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+export const allowedOrigins = env.ALLOWED_ORIGIN.split(",")
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);

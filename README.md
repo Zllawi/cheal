@@ -70,3 +70,5 @@ npm run build
 
 - Copy values from `.env.example` and keep `.env` private.
 - The repository ignores local logs, caches, build output, and machine-specific files.
+- For Vercel, set `NEXT_PUBLIC_API_BASE_URL` to your deployed backend URL.
+- In the backend environment, set `ALLOWED_ORIGIN` to include both local and deployed frontend origins.

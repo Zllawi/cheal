@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { ZodError } from "zod";
-import { env } from "./config/env.js";
+import { allowedOrigins, env } from "./config/env.js";
 import { connectMongoSafely, connectRedisSafely, isMongoHealthy } from "./db/pool.js";
 import { HttpError } from "./utils/http-error.js";
 import { optionalAuth } from "./modules/auth/jwt.js";
@@ -25,7 +25,19 @@ app.use(
 );
 app.use(
   cors({
-    origin: env.ALLOWED_ORIGIN,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    },
     credentials: true
   })
 );
