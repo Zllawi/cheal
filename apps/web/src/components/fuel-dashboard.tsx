@@ -315,8 +315,16 @@ export function FuelDashboard() {
       setMessage("أدخل رقم الهاتف أولاً");
       return;
     }
+    if (loginPhone.trim().length < 8) {
+      setMessage("رقم الهاتف يجب أن لا يقل عن 8 أرقام");
+      return;
+    }
     if (!loginPassword.trim()) {
       setMessage("أدخل كلمة المرور");
+      return;
+    }
+    if (loginPassword.trim().length < 8) {
+      setMessage("كلمة المرور يجب أن لا تقل عن 8 أحرف");
       return;
     }
 

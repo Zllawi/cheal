@@ -30,6 +30,14 @@ const overpassCache = new Map<string, { expiresAt: number; stations: OSMFuelStat
 const overpassGasCache = new Map<string, { expiresAt: number; items: OSMGasLocation[] }>();
 let overpassCooldownUntil = 0;
 
+type ApiErrorResponse = {
+  error?: string;
+  message?: string;
+  details?: {
+    fieldErrors?: Record<string, string[]>;
+  } | null;
+} | null;
+
 function resolveApiBase(): string {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (configured) {
@@ -82,6 +90,84 @@ function isLocalOrPrivateHost(hostname: string): boolean {
   return false;
 }
 
+function normalizePhoneInput(raw: string): string {
+  const latinized = raw
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
+
+  let value = latinized
+    .trim()
+    .replace(/[\s\-()]/g, "")
+    .replace(/[\u200e\u200f]/g, "");
+
+  if (value.startsWith("00")) {
+    value = `+${value.slice(2)}`;
+  }
+  if (!value.startsWith("+") && value.startsWith("218")) {
+    value = `+${value}`;
+  }
+  if (!value.startsWith("+") && value.startsWith("0")) {
+    value = `+218${value.slice(1)}`;
+  }
+  if (value && !value.startsWith("+")) {
+    value = `+${value}`;
+  }
+
+  return value;
+}
+
+function mapValidationErrorToArabic(error: ApiErrorResponse): string | null {
+  const fieldErrors = error?.details?.fieldErrors;
+  if (!fieldErrors) {
+    return null;
+  }
+
+  const messages: string[] = [];
+
+  if (fieldErrors.fullName) {
+    messages.push("الاسم يجب أن يكون حرفين على الأقل");
+  }
+  if (fieldErrors.phone) {
+    messages.push("رقم الهاتف مطلوب ويجب أن لا يقل عن 8 أرقام");
+  }
+  if (fieldErrors.address) {
+    messages.push("العنوان مطلوب ويجب أن لا يقل عن 3 أحرف");
+  }
+  if (fieldErrors.password) {
+    messages.push("كلمة المرور مطلوبة ويجب أن لا تقل عن 8 أحرف");
+  }
+
+  if (messages.length === 0) {
+    return null;
+  }
+
+  return messages.join(" - ");
+}
+
+function mapApiErrorMessage(error: ApiErrorResponse, fallback: string): string {
+  if (!error) {
+    return fallback;
+  }
+
+  if (error.error === "ValidationError") {
+    return mapValidationErrorToArabic(error) ?? "البيانات المدخلة غير صحيحة";
+  }
+
+  if (error.error === "DuplicateKey") {
+    return "رقم الهاتف مستخدم بالفعل";
+  }
+
+  if (error.error === "DatabaseAuthorizationError") {
+    return "تعذر الوصول إلى قاعدة البيانات. تحقق من إعدادات MongoDB على الخادم";
+  }
+
+  if (typeof error.message === "string" && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export async function devLogin(role: "user" | "station_manager" | "admin" = "user") {
   const response = await fetch(`${API_BASE}/auth/dev-login`, {
     method: "POST",
@@ -103,15 +189,19 @@ export async function loginUser(payload: {
   phone: string;
   password: string;
 }): Promise<{ accessToken: string; user: AuthUserProfile }> {
+  const normalizedPhone = normalizePhoneInput(payload.phone);
   const response = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      ...payload,
+      phone: normalizedPhone
+    })
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.message ?? "تعذر تسجيل الدخول");
+    const error = (await response.json().catch(() => null)) as ApiErrorResponse;
+    throw new Error(mapApiErrorMessage(error, "تعذر تسجيل الدخول"));
   }
 
   const data = (await response.json()) as {
@@ -128,15 +218,19 @@ export async function registerUser(payload: {
   password: string;
   city?: string;
 }): Promise<{ accessToken: string; user: AuthUserProfile }> {
+  const normalizedPhone = normalizePhoneInput(payload.phone);
   const response = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      ...payload,
+      phone: normalizedPhone
+    })
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.message ?? "تعذر إنشاء الحساب");
+    const error = (await response.json().catch(() => null)) as ApiErrorResponse;
+    throw new Error(mapApiErrorMessage(error, "تعذر إنشاء الحساب"));
   }
 
   const data = (await response.json()) as {
