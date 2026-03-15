@@ -159,7 +159,7 @@ app.use("/analytics", analyticsRouter);
 app.use("/support", supportRouter);
 app.use("/", realtimeRouter);
 
-app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err instanceof ZodError) {
     res.status(400).json({
       error: "ValidationError",
@@ -192,6 +192,17 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
       error: "DatabaseAuthorizationError",
       message: "Database credentials/permissions are not valid for this operation",
       details: null
+    });
+    return;
+  }
+
+  if (req.path.startsWith("/auth/")) {
+    const details = extractSafeErrorDetails(err);
+    console.error("[auth] unhandled error", details, err);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Auth operation failed",
+      details
     });
     return;
   }
@@ -240,4 +251,20 @@ function isMongoAuthorizationError(value: unknown): boolean {
     name.includes("mongo") && message.includes("not authorized") ||
     message.includes("authentication failed")
   );
+}
+
+function extractSafeErrorDetails(value: unknown): { reason: string; name?: string } | null {
+  if (value instanceof Error) {
+    const message = value.message?.trim() || "Unknown error";
+    return {
+      name: value.name || undefined,
+      reason: message.slice(0, 260)
+    };
+  }
+
+  if (typeof value === "string") {
+    return { reason: value.slice(0, 260) };
+  }
+
+  return null;
 }

@@ -35,6 +35,8 @@ type ApiErrorResponse = {
   message?: string;
   details?: {
     fieldErrors?: Record<string, string[]>;
+    reason?: string;
+    name?: string;
   } | null;
 } | null;
 
@@ -174,6 +176,10 @@ function mapApiErrorMessage(error: ApiErrorResponse, fallback: string): string {
   }
 
   if (error.error === "InternalServerError") {
+    const reason = error.details?.reason?.trim();
+    if (reason) {
+      return `تعذر إتمام العملية على الخادم: ${reason}`;
+    }
     return "حدث خطأ غير متوقع في الخادم. حاول مرة أخرى بعد قليل";
   }
 
@@ -220,7 +226,17 @@ export async function loginUser(payload: {
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiErrorResponse;
-    throw new Error(mapApiErrorMessage(error, "تعذر تسجيل الدخول"));
+    let message = mapApiErrorMessage(error, "تعذر تسجيل الدخول");
+    if (message.includes("تعذر إتمام العملية على الخادم") || message.includes("حدث خطأ غير متوقع")) {
+      try {
+        const health = await fetchBackendHealth();
+        const dbConnected = health.dependencies.db ? "متصلة" : "غير متصلة";
+        message = `${message} | حالة قاعدة البيانات: ${dbConnected}`;
+      } catch {
+        // Ignore health check errors and keep original message.
+      }
+    }
+    throw new Error(message);
   }
 
   const data = (await response.json()) as {
@@ -249,7 +265,17 @@ export async function registerUser(payload: {
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiErrorResponse;
-    throw new Error(mapApiErrorMessage(error, "تعذر إنشاء الحساب"));
+    let message = mapApiErrorMessage(error, "تعذر إنشاء الحساب");
+    if (message.includes("تعذر إتمام العملية على الخادم") || message.includes("حدث خطأ غير متوقع")) {
+      try {
+        const health = await fetchBackendHealth();
+        const dbConnected = health.dependencies.db ? "متصلة" : "غير متصلة";
+        message = `${message} | حالة قاعدة البيانات: ${dbConnected}`;
+      } catch {
+        // Ignore health check errors and keep original message.
+      }
+    }
+    throw new Error(message);
   }
 
   const data = (await response.json()) as {
