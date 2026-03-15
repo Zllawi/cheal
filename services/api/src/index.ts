@@ -21,6 +21,10 @@ function normalizeOrigin(value: string): string {
   return value.trim().replace(/\/$/, "");
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function isPrivateOrLocalHostname(hostname: string): boolean {
   if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
     return true;
@@ -50,10 +54,36 @@ function isPrivateOrLocalHostname(hostname: string): boolean {
   return false;
 }
 
+function originMatchesRule(origin: string, rule: string): boolean {
+  if (!rule.includes("*")) {
+    return origin === rule;
+  }
+
+  try {
+    const originUrl = new URL(origin);
+    const ruleUrl = new URL(rule);
+
+    if (originUrl.protocol !== ruleUrl.protocol) {
+      return false;
+    }
+
+    if (ruleUrl.port && originUrl.port !== ruleUrl.port) {
+      return false;
+    }
+
+    const hostPattern = `^${escapeRegex(ruleUrl.hostname).replace(/\\\*/g, ".*")}$`;
+    return new RegExp(hostPattern, "i").test(originUrl.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedCorsOrigin(origin: string): boolean {
   const normalizedOrigin = normalizeOrigin(origin);
-  if (allowedOrigins.includes(normalizedOrigin)) {
-    return true;
+  for (const rule of allowedOrigins) {
+    if (originMatchesRule(normalizedOrigin, rule)) {
+      return true;
+    }
   }
 
   // In development, allow local/LAN web clients without editing ALLOWED_ORIGIN for every IP change.
@@ -136,6 +166,24 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
     return;
   }
 
+  if (isMongoDuplicateKeyError(err)) {
+    res.status(409).json({
+      error: "DuplicateKey",
+      message: "A record with the same unique value already exists",
+      details: null
+    });
+    return;
+  }
+
+  if (isMongoAuthorizationError(err)) {
+    res.status(503).json({
+      error: "DatabaseAuthorizationError",
+      message: "Database credentials/permissions are not valid for this operation",
+      details: null
+    });
+    return;
+  }
+
   console.error(err);
   res.status(500).json({
     error: "InternalServerError",
@@ -153,3 +201,31 @@ async function bootstrap(): Promise<void> {
 }
 
 void bootstrap();
+
+function isMongoDuplicateKeyError(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const error = value as { code?: unknown; name?: unknown; message?: unknown };
+  const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
+  return error.code === 11000 || message.includes("e11000 duplicate key");
+}
+
+function isMongoAuthorizationError(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const error = value as { code?: unknown; codeName?: unknown; message?: unknown; name?: unknown };
+  const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
+  const codeName = typeof error.codeName === "string" ? error.codeName.toLowerCase() : "";
+  const name = typeof error.name === "string" ? error.name.toLowerCase() : "";
+
+  return (
+    error.code === 13 ||
+    codeName.includes("unauthorized") ||
+    name.includes("mongo") && message.includes("not authorized") ||
+    message.includes("authentication failed")
+  );
+}
