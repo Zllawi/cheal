@@ -161,7 +161,14 @@ function mapApiErrorMessage(error: ApiErrorResponse, fallback: string): string {
     return "تعذر الوصول إلى قاعدة البيانات. تحقق من إعدادات MongoDB على الخادم";
   }
 
+  if (error.error === "InternalServerError") {
+    return "حدث خطأ غير متوقع في الخادم. حاول مرة أخرى بعد قليل";
+  }
+
   if (typeof error.message === "string" && error.message.trim().length > 0) {
+    if (error.message.trim().toLowerCase() === "unexpected server error") {
+      return "حدث خطأ غير متوقع في الخادم. حاول مرة أخرى بعد قليل";
+    }
     return error.message;
   }
 
