@@ -17,7 +17,31 @@ const listQuerySchema = z.object({
   offset: z.coerce.number().min(0).default(0)
 });
 
+function extractStationCoordinates(station: any): { lat: number; lng: number } | null {
+  const coordinates = station?.location?.coordinates;
+  if (Array.isArray(coordinates) && coordinates.length >= 2) {
+    const lng = Number(coordinates[0]);
+    const lat = Number(coordinates[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { lat, lng };
+    }
+  }
+
+  const lat = Number(station?.lat);
+  const lng = Number(station?.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return { lat, lng };
+  }
+
+  return null;
+}
+
 function stationToDto(station: any) {
+  const coordinates = extractStationCoordinates(station);
+  if (!coordinates) {
+    return null;
+  }
+
   return {
     id: station._id,
     osmId: station.osmId ?? null,
@@ -31,8 +55,8 @@ function stationToDto(station: any) {
     congestion: station.currentCongestion,
     confidence: station.currentConfidence ?? 0,
     lastVerifiedAt: station.lastVerifiedAt ?? null,
-    lat: station.location.coordinates[1],
-    lng: station.location.coordinates[0]
+    lat: coordinates.lat,
+    lng: coordinates.lng
   };
 }
 
@@ -58,9 +82,11 @@ router.get(
       .limit(query.limit)
       .lean()) as any[];
 
+    const items = stations.map(stationToDto).filter((item): item is NonNullable<typeof item> => item !== null);
+
     res.json({
-      items: stations.map(stationToDto),
-      count: stations.length
+      items,
+      count: items.length
     });
   })
 );
@@ -101,23 +127,34 @@ router.get(
       { $limit: query.limit }
     ]);
 
+    const items = stations
+      .map((station) => {
+        const coordinates = extractStationCoordinates(station);
+        if (!coordinates) {
+          return null;
+        }
+
+        return {
+          stationId: station._id,
+          name: station.name,
+          city: station.city,
+          supportsGasoline: station.supportsGasoline,
+          supportsDiesel: station.supportsDiesel,
+          fuelStatus: station.currentFuelStatus,
+          dieselStatus: station.currentDieselStatus ?? "unavailable",
+          congestion: station.currentCongestion,
+          confidence: station.currentConfidence ?? 0,
+          lastVerifiedAt: station.lastVerifiedAt ?? null,
+          distanceMeters: Math.round(station.distanceMeters),
+          lat: coordinates.lat,
+          lng: coordinates.lng
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
     res.json({
-      items: stations.map((station) => ({
-        stationId: station._id,
-        name: station.name,
-        city: station.city,
-        supportsGasoline: station.supportsGasoline,
-        supportsDiesel: station.supportsDiesel,
-        fuelStatus: station.currentFuelStatus,
-        dieselStatus: station.currentDieselStatus ?? "unavailable",
-        congestion: station.currentCongestion,
-        confidence: station.currentConfidence ?? 0,
-        lastVerifiedAt: station.lastVerifiedAt ?? null,
-        distanceMeters: Math.round(station.distanceMeters),
-        lat: station.location.coordinates[1],
-        lng: station.location.coordinates[0]
-      })),
-      count: stations.length
+      items,
+      count: items.length
     });
   })
 );
