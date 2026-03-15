@@ -76,8 +76,24 @@ router.get(
       filter.currentCongestion = query.congestion;
     }
 
-    const stations = (await StationModel.find(filter)
-      .sort({ updatedAt: -1 })
+    const stations = (await StationModel.find(filter, {
+      _id: 1,
+      osmId: 1,
+      name: 1,
+      city: 1,
+      address: 1,
+      supportsGasoline: 1,
+      supportsDiesel: 1,
+      currentFuelStatus: 1,
+      currentDieselStatus: 1,
+      currentCongestion: 1,
+      currentConfidence: 1,
+      lastVerifiedAt: 1,
+      location: 1,
+      lat: 1,
+      lng: 1
+    })
+      .sort({ _id: -1 })
       .skip(query.offset)
       .limit(query.limit)
       .lean()) as any[];
