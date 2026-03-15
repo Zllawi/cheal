@@ -38,6 +38,18 @@ type ApiErrorResponse = {
   } | null;
 } | null;
 
+export type BackendHealth = {
+  ok: boolean;
+  timestamp: string;
+  dependencies: {
+    db: boolean;
+    dbState?: string;
+    dbStateCode?: number;
+    redis?: boolean;
+    redisState?: string;
+  };
+};
+
 function resolveApiBase(): string {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (configured) {
@@ -270,6 +282,17 @@ export async function fetchMe(token: string): Promise<AuthUserProfile> {
 
   const data = (await response.json()) as { user: AuthUserProfile };
   return data.user;
+}
+
+export async function fetchBackendHealth(): Promise<BackendHealth> {
+  const response = await fetch(`${API_BASE}/health`, {
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error("تعذر التحقق من حالة الخادم");
+  }
+
+  return (await response.json()) as BackendHealth;
 }
 
 export async function fetchStations(): Promise<Station[]> {

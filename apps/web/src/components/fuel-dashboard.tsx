@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   createEventsConnection,
+  fetchBackendHealth,
   fetchMe,
   fetchNearbyStations,
   fetchStations,
@@ -109,6 +110,9 @@ export function FuelDashboard() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>("جاري تحميل المحطات...");
   const [geoPosition, setGeoPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [dbConnected, setDbConnected] = useState<boolean | null>(null);
+  const [dbStatusText, setDbStatusText] = useState<string>("جاري الفحص...");
+  const [dbCheckedAt, setDbCheckedAt] = useState<string | null>(null);
 
   const canEdit = authUser?.role === "admin" || authUser?.role === "station_manager";
 
@@ -218,6 +222,21 @@ export function FuelDashboard() {
     setMessage(`تم تحميل ${list.length} محطة`);
   }
 
+  async function refreshBackendDbStatus(): Promise<void> {
+    try {
+      const health = await fetchBackendHealth();
+      const isConnected = Boolean(health.dependencies.db);
+      const mappedState = mapDbStateLabel(health.dependencies.dbState);
+      setDbConnected(isConnected);
+      setDbStatusText(isConnected ? `متصل${mappedState ? ` (${mappedState})` : ""}` : `غير متصل${mappedState ? ` (${mappedState})` : ""}`);
+      setDbCheckedAt(health.timestamp);
+    } catch {
+      setDbConnected(false);
+      setDbStatusText("تعذر فحص الحالة");
+      setDbCheckedAt(null);
+    }
+  }
+
   useEffect(() => {
     const storedToken = window.localStorage.getItem("fuelmap_token");
     if (storedToken) {
@@ -236,8 +255,13 @@ export function FuelDashboard() {
     void loadStations().catch((error: Error) => {
       setMessage(error.message);
     });
+    void refreshBackendDbStatus();
 
     const events = createEventsConnection();
+    const healthTimer = setInterval(() => {
+      void refreshBackendDbStatus();
+    }, 30000);
+
     events.addEventListener("station.updated", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as {
         stationId: string;
@@ -268,7 +292,10 @@ export function FuelDashboard() {
       );
     });
 
-    return () => events.close();
+    return () => {
+      clearInterval(healthTimer);
+      events.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -342,6 +369,7 @@ export function FuelDashboard() {
       setShowAuthPanel(false);
       setMessage(`تم تسجيل الدخول: ${roleLabel(result.user.role)}`);
     } catch (error) {
+      void refreshBackendDbStatus();
       setMessage(error instanceof Error ? error.message : "فشل تسجيل الدخول");
     } finally {
       setBusy(false);
@@ -383,6 +411,7 @@ export function FuelDashboard() {
       setShowAuthPanel(false);
       setMessage(`تم إنشاء الحساب وتسجيل الدخول: ${roleLabel(result.user.role)}`);
     } catch (error) {
+      void refreshBackendDbStatus();
       setMessage(error instanceof Error ? error.message : "تعذر إنشاء الحساب");
     } finally {
       setBusy(false);
@@ -638,6 +667,30 @@ export function FuelDashboard() {
 
           <div className="rounded-xl border border-black/10 bg-white/75 px-3 py-2 text-sm text-black/80">
             {message}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-black/10 bg-white/75 px-3 py-2 text-xs">
+            <span
+              className={`rounded-full px-2 py-1 font-semibold ${
+                dbConnected === true
+                  ? "bg-emerald-100 text-emerald-800"
+                  : dbConnected === false
+                    ? "bg-red-100 text-red-800"
+                    : "bg-black/10 text-black/70"
+              }`}
+            >
+              حالة قاعدة البيانات: {dbStatusText}
+            </span>
+            <button
+              type="button"
+              onClick={() => void refreshBackendDbStatus()}
+              className="rounded-lg border border-black/15 bg-white px-2 py-1 text-[11px] font-semibold text-black/75 hover:bg-black/[0.04]"
+            >
+              تحديث الحالة
+            </button>
+            {dbCheckedAt ? (
+              <span className="text-[11px] text-black/55">آخر فحص: {formatHealthTime(dbCheckedAt)}</span>
+            ) : null}
           </div>
         </div>
       </header>
@@ -1098,6 +1151,36 @@ function formatStationTime(value?: string | null): string {
 
   return new Intl.DateTimeFormat("ar-LY", {
     dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function mapDbStateLabel(value?: string): string {
+  if (!value) {
+    return "";
+  }
+  if (value === "connected") {
+    return "متصلة";
+  }
+  if (value === "connecting") {
+    return "جارٍ الاتصال";
+  }
+  if (value === "disconnecting") {
+    return "جارٍ الفصل";
+  }
+  if (value === "disconnected") {
+    return "مفصولة";
+  }
+  return value;
+}
+
+function formatHealthTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "غير متوفر";
+  }
+
+  return new Intl.DateTimeFormat("ar-LY", {
     timeStyle: "short"
   }).format(date);
 }

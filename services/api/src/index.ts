@@ -3,7 +3,14 @@ import cors from "cors";
 import helmet from "helmet";
 import { ZodError } from "zod";
 import { allowedOrigins, env } from "./config/env.js";
-import { connectMongoSafely, connectRedisSafely, isMongoHealthy } from "./db/pool.js";
+import {
+  connectMongoSafely,
+  connectRedisSafely,
+  getMongoState,
+  getRedisState,
+  isMongoHealthy,
+  isRedisHealthy
+} from "./db/pool.js";
 import { HttpError } from "./utils/http-error.js";
 import { optionalAuth } from "./modules/auth/jwt.js";
 import { authRouter } from "./modules/auth/router.js";
@@ -129,11 +136,16 @@ app.use(express.json({ limit: "1mb" }));
 app.use(optionalAuth);
 
 app.get("/health", async (_req, res) => {
+  const mongoState = getMongoState();
   res.json({
     ok: true,
     timestamp: new Date().toISOString(),
     dependencies: {
-      db: isMongoHealthy()
+      db: isMongoHealthy(),
+      dbState: mongoState.label,
+      dbStateCode: mongoState.code,
+      redis: isRedisHealthy(),
+      redisState: getRedisState()
     }
   });
 });

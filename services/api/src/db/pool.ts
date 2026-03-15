@@ -39,3 +39,25 @@ export async function connectMongoSafely(): Promise<void> {
 export function isMongoHealthy(): boolean {
   return mongoose.connection.readyState === 1;
 }
+
+export function getMongoState(): { code: number; label: string } {
+  const code = mongoose.connection.readyState;
+  switch (code) {
+    case 1:
+      return { code, label: "connected" };
+    case 2:
+      return { code, label: "connecting" };
+    case 3:
+      return { code, label: "disconnecting" };
+    default:
+      return { code, label: "disconnected" };
+  }
+}
+
+export function isRedisHealthy(): boolean {
+  return redis.status === "ready";
+}
+
+export function getRedisState(): string {
+  return redis.status;
+}
