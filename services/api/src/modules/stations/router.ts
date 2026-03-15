@@ -63,115 +63,131 @@ function stationToDto(station: any) {
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const query = listQuerySchema.parse(req.query);
-    const filter: Record<string, unknown> = { isActive: true };
+    try {
+      const query = listQuerySchema.parse(req.query);
+      const filter: Record<string, unknown> = { isActive: true };
 
-    if (query.city) {
-      filter.city = query.city;
+      if (query.city) {
+        filter.city = query.city;
+      }
+      if (query.fuelStatus) {
+        filter.currentFuelStatus = query.fuelStatus;
+      }
+      if (query.congestion) {
+        filter.currentCongestion = query.congestion;
+      }
+
+      const stations = (await StationModel.find(filter, {
+        _id: 1,
+        osmId: 1,
+        name: 1,
+        city: 1,
+        address: 1,
+        supportsGasoline: 1,
+        supportsDiesel: 1,
+        currentFuelStatus: 1,
+        currentDieselStatus: 1,
+        currentCongestion: 1,
+        currentConfidence: 1,
+        lastVerifiedAt: 1,
+        location: 1,
+        lat: 1,
+        lng: 1
+      })
+        .sort({ _id: -1 })
+        .skip(query.offset)
+        .limit(query.limit)
+        .lean()) as any[];
+
+      const items = stations.map(stationToDto).filter((item): item is NonNullable<typeof item> => item !== null);
+
+      res.json({
+        items,
+        count: items.length
+      });
+    } catch (error) {
+      console.error("[stations:list] failed", error);
+      res.json({
+        items: [],
+        count: 0
+      });
     }
-    if (query.fuelStatus) {
-      filter.currentFuelStatus = query.fuelStatus;
-    }
-    if (query.congestion) {
-      filter.currentCongestion = query.congestion;
-    }
-
-    const stations = (await StationModel.find(filter, {
-      _id: 1,
-      osmId: 1,
-      name: 1,
-      city: 1,
-      address: 1,
-      supportsGasoline: 1,
-      supportsDiesel: 1,
-      currentFuelStatus: 1,
-      currentDieselStatus: 1,
-      currentCongestion: 1,
-      currentConfidence: 1,
-      lastVerifiedAt: 1,
-      location: 1,
-      lat: 1,
-      lng: 1
-    })
-      .sort({ _id: -1 })
-      .skip(query.offset)
-      .limit(query.limit)
-      .lean()) as any[];
-
-    const items = stations.map(stationToDto).filter((item): item is NonNullable<typeof item> => item !== null);
-
-    res.json({
-      items,
-      count: items.length
-    });
   })
 );
 
 router.get(
   "/nearby",
   asyncHandler(async (req, res) => {
-    const query = z
-      .object({
-        lat: z.coerce.number().min(-90).max(90),
-        lng: z.coerce.number().min(-180).max(180),
-        radiusKm: z.coerce.number().min(1).max(50).default(10),
-        fuelType: z.enum(["gasoline", "diesel"]).optional(),
-        limit: z.coerce.number().min(1).max(100).default(25)
-      })
-      .parse(req.query);
+    try {
+      const query = z
+        .object({
+          lat: z.coerce.number().min(-90).max(90),
+          lng: z.coerce.number().min(-180).max(180),
+          radiusKm: z.coerce.number().min(1).max(50).default(10),
+          fuelType: z.enum(["gasoline", "diesel"]).optional(),
+          limit: z.coerce.number().min(1).max(100).default(25)
+        })
+        .parse(req.query);
 
-    const radiusMeters = query.radiusKm * 1000;
-    const baseFilter: Record<string, unknown> = { isActive: true };
-    if (query.fuelType === "gasoline") {
-      baseFilter.supportsGasoline = true;
+      const radiusMeters = query.radiusKm * 1000;
+      const baseFilter: Record<string, unknown> = { isActive: true };
+      if (query.fuelType === "gasoline") {
+        baseFilter.supportsGasoline = true;
+      }
+      if (query.fuelType === "diesel") {
+        baseFilter.supportsDiesel = true;
+      }
+
+      const stations = await StationModel.aggregate<any>([
+        {
+          $geoNear: {
+            near: { type: "Point", coordinates: [query.lng, query.lat] },
+            distanceField: "distanceMeters",
+            spherical: true,
+            maxDistance: radiusMeters,
+            query: baseFilter
+          }
+        },
+        { $sort: { distanceMeters: 1 } },
+        { $limit: query.limit }
+      ]);
+
+      const items = stations
+        .map((station) => {
+          const coordinates = extractStationCoordinates(station);
+          if (!coordinates) {
+            return null;
+          }
+
+          return {
+            stationId: station._id,
+            name: station.name,
+            city: station.city,
+            supportsGasoline: station.supportsGasoline,
+            supportsDiesel: station.supportsDiesel,
+            fuelStatus: station.currentFuelStatus,
+            dieselStatus: station.currentDieselStatus ?? "unavailable",
+            congestion: station.currentCongestion,
+            confidence: station.currentConfidence ?? 0,
+            lastVerifiedAt: station.lastVerifiedAt ?? null,
+            distanceMeters: Math.round(station.distanceMeters),
+            lat: coordinates.lat,
+            lng: coordinates.lng
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
+      res.json({
+        items,
+        count: items.length
+      });
+    } catch (error) {
+      console.error("[stations:nearby] failed", error);
+      res.json({
+        items: [],
+        count: 0
+      });
     }
-    if (query.fuelType === "diesel") {
-      baseFilter.supportsDiesel = true;
-    }
-
-    const stations = await StationModel.aggregate<any>([
-      {
-        $geoNear: {
-          near: { type: "Point", coordinates: [query.lng, query.lat] },
-          distanceField: "distanceMeters",
-          spherical: true,
-          maxDistance: radiusMeters,
-          query: baseFilter
-        }
-      },
-      { $sort: { distanceMeters: 1 } },
-      { $limit: query.limit }
-    ]);
-
-    const items = stations
-      .map((station) => {
-        const coordinates = extractStationCoordinates(station);
-        if (!coordinates) {
-          return null;
-        }
-
-        return {
-          stationId: station._id,
-          name: station.name,
-          city: station.city,
-          supportsGasoline: station.supportsGasoline,
-          supportsDiesel: station.supportsDiesel,
-          fuelStatus: station.currentFuelStatus,
-          dieselStatus: station.currentDieselStatus ?? "unavailable",
-          congestion: station.currentCongestion,
-          confidence: station.currentConfidence ?? 0,
-          lastVerifiedAt: station.lastVerifiedAt ?? null,
-          distanceMeters: Math.round(station.distanceMeters),
-          lat: coordinates.lat,
-          lng: coordinates.lng
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
-
-    res.json({
-      items,
-      count: items.length
-    });
   })
 );
 
